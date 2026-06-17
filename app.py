@@ -73,7 +73,9 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 
 # ===== Log แบบอ่านง่าย (console เท่านั้น — ไม่เก็บไฟล์) =====
+# ปิด access log ดิบทั้งของ Flask dev (werkzeug) และ gunicorn (บน Render)
 logging.getLogger("werkzeug").setLevel(logging.WARNING)
+logging.getLogger("gunicorn.access").setLevel(logging.WARNING)
 _activity = logging.getLogger("chatflow")
 _activity.setLevel(logging.INFO)
 _activity.propagate = False
