@@ -15,6 +15,7 @@ try:
 except ImportError:
     pass
 
+from flask_session import Session
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 
@@ -31,32 +32,40 @@ MAX_NOTE_LEN = 5000
 MAX_NOTES_PER_USER = 500
 _user_lock = threading.Lock()
 
-# ===== Flask + session ถาวร =====
-app = Flask(__name__)
-app.config.update(
-    SECRET_KEY=os.environ.get("SECRET_KEY", "chatflow-default-secret-please-change"),
-    PERMANENT_SESSION_LIFETIME=timedelta(days=365),
-    SESSION_COOKIE_SAMESITE="Lax",
-)
-
 # ===== MongoDB =====
 MONGODB_URI = os.environ.get("MONGODB_URI", "")
 DB_NAME = os.environ.get("MONGODB_DB", "chatflow")
 COLLECTION_NAME = "userdata"
 
-_mongo_client = None
-_userdata = None
+# MongoClient เชื่อมแบบ lazy (ไม่ติดต่อจริงจนกว่าจะใช้) — สร้างได้แม้ DB ยังไม่พร้อม
+mongo_client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=8000) if MONGODB_URI else None
 
 
 def get_collection():
-    """คืน collection userdata (เชื่อมต่อแบบ lazy ครั้งแรกที่ใช้)"""
-    global _mongo_client, _userdata
-    if _userdata is None:
-        if not MONGODB_URI:
-            raise RuntimeError("ยังไม่ได้ตั้งค่า MONGODB_URI")
-        _mongo_client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=8000)
-        _userdata = _mongo_client[DB_NAME][COLLECTION_NAME]
-    return _userdata
+    """คืน collection userdata"""
+    if mongo_client is None:
+        raise RuntimeError("ยังไม่ได้ตั้งค่า MONGODB_URI")
+    return mongo_client[DB_NAME][COLLECTION_NAME]
+
+
+# ===== Flask + session ถาวร (เก็บฝั่ง server ใน MongoDB) =====
+app = Flask(__name__)
+app.config.update(
+    SECRET_KEY=os.environ.get("SECRET_KEY", "chatflow-default-secret-please-change"),
+    PERMANENT_SESSION_LIFETIME=timedelta(days=365),
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_PERMANENT=True,
+)
+
+if mongo_client is not None:
+    # เก็บ session ลง collection 'sessions' ใน MongoDB
+    app.config.update(
+        SESSION_TYPE="mongodb",
+        SESSION_MONGODB=mongo_client,
+        SESSION_MONGODB_DB=DB_NAME,
+        SESSION_MONGODB_COLLECT="sessions",
+    )
+    Session(app)
 
 
 # ===== Log แบบอ่านง่าย (console เท่านั้น — ไม่เก็บไฟล์) =====
