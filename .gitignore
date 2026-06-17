@@ -1,0 +1,28 @@
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Nested clone (ของซ้ำ — ไม่ต้องอัป)
+chatflow/
+
+# Editor / tooling
+.vscode/
+.claude/
+
+# ความลับ / ตัวแปรสภาพแวดล้อม (ห้ามอัป!)
+.env
+
+# Runtime data เก่า (ตอนนี้ย้ายไป MongoDB แล้ว)
+user_data.json
+*.json.tmp
+activity.log*
+
+# OS
+Thumbs.db
+.DS_Store

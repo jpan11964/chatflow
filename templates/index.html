@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0d6efd">
+    <title>ChatFlow — ตอบกลับลูกค้า</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <header class="toolbar">
+        <div class="user-bar">
+            <span class="user-name"><strong id="user-display"></strong></span>
+            <button type="button" id="change-user" class="user-switch">เปลี่ยนผู้ใช้</button>
+        </div>
+
+        <nav class="button-group group-blue" aria-label="ทักทายและข้อมูล">
+            <button type="button" data-keyword="สวัสดี">สวัสดี</button>
+            <button type="button" data-keyword="กรอกข้อมูล">กรอกข้อมูล</button>
+            <button type="button" data-keyword="ขอสลิป">ขอสลิป</button>
+            <button type="button" data-keyword="ขอโทษ(ลูกค้าด่า)">ขอโทษ<br><small>(ลูกค้าด่า)</small></button>
+        </nav>
+
+        <nav class="button-group group-green" aria-label="สถานะรายการ">
+            <button type="button" data-keyword="ตรวจสอบ">ตรวจสอบ<br><small>1-2 นาที</small></button>
+            <button type="button" data-keyword="รอ15">รอ 15 นาที</button>
+            <button type="button" data-keyword="เติมเงินเรียบร้อย">เติมเงินเรียบร้อย</button>
+            <button type="button" data-keyword="ถอนเงินเรียบร้อย">ถอนเงินเรียบร้อย</button>
+        </nav>
+
+        <nav class="button-group group-red" aria-label="โปรโมชันและปิดการสนทนา">
+            <button type="button" data-keyword="โบนัสไทม์">โบนัสไทม์</button>
+            <button type="button" data-keyword="คำอวยพร">อวยพร<br><small>(ปิดการสนทนา)</small></button>
+            <button type="button" data-keyword="ขอบคุณ">ขอบคุณที่ใช้บริการ</button>
+            <button type="button" class="note-btn" id="note-btn">โน๊ต</button>
+        </nav>
+    </header>
+
+    <main>
+        <div id="response" class="response" aria-live="polite">
+            <p class="placeholder">เลือกหมวดด้านบนเพื่อสุ่มข้อความตอบกลับ แล้วคลิกข้อความเพื่อคัดลอก</p>
+        </div>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="assertive"></div>
+
+    <script>
+    // ===== ผู้ใช้จาก session (ฝั่ง server) =====
+    const username = {{ user|tojson }};
+    document.getElementById('user-display').textContent = username || '';
+    document.getElementById('change-user').addEventListener('click', () => {
+        window.location.href = '/logout';   // ออกจากระบบ + ล้าง session
+    });
+
+    // ถ้า session หมดอายุระหว่างใช้งาน → กลับไปหน้าล็อกอิน
+    function checkAuth(res) {
+        if (res.status === 401) { window.location.href = '/'; return false; }
+        return true;
+    }
+
+    const responseDiv = document.getElementById('response');
+    const toast = document.getElementById('toast');
+    const buttons = document.querySelectorAll('.button-group button[data-keyword]');
+    const noteBtn = document.getElementById('note-btn');
+
+    let lastSignature = null;    // ลายเซ็นชุดข้อความล่าสุด (กันสุ่มซ้ำ)
+
+    // หนีอักขระ HTML (สำหรับข้อความที่ผู้ใช้กรอกเอง — กัน XSS)
+    function escapeHtml(str) {
+        return str
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
+    // แปลง HTML (<br>) กลับเป็นข้อความธรรมดาสำหรับคัดลอก
+    function htmlToPlainText(html) {
+        return html
+            .replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<[^>]+>/g, '')
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .trim();
+    }
+
+    function showToast(message, duration = 1500) {
+        toast.textContent = message;
+        toast.classList.add('show');
+        clearTimeout(showToast._t);
+        showToast._t = setTimeout(() => toast.classList.remove('show'), duration);
+    }
+
+    function setActiveButton(keyword) {
+        buttons.forEach(b => b.classList.toggle('active', b.dataset.keyword === keyword));
+        noteBtn.classList.toggle('active', keyword === '__note__');
+    }
+
+    async function sendKeyword(keyword) {
+        setActiveButton(keyword);
+
+        responseDiv.innerHTML = '<div class="loading"><span class="spinner"></span>กำลังสุ่มข้อความ...</div>';
+
+        // กันสุ่มซ้ำ: ลองได้สูงสุด 3 ครั้งให้ต่างจากชุดก่อนหน้า
+        try {
+            let data;
+            for (let attempt = 0; attempt < 3; attempt++) {
+                const res = await fetch('/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ keyword })
+                });
+                if (!res.ok) throw new Error('โหลดข้อความไม่สำเร็จ');
+
+                data = await res.json();
+                if (!data.responses || data.responses.length === 0) {
+                    throw new Error('ไม่มีข้อความที่ถูกสร้าง');
+                }
+                const signature = data.responses.join('||');
+                if (signature !== lastSignature) { lastSignature = signature; break; }
+            }
+
+            responseDiv.innerHTML = data.responses.map((msg, i) => `
+                <div class="response-item" tabindex="0" role="button" data-index="${i}">
+                    <span class="response-text">${msg}</span>
+                </div>
+            `).join('');
+        } catch (err) {
+            responseDiv.innerHTML = `<p class="error">เกิดข้อผิดพลาด: ${err.message}</p>`;
+        }
+    }
+
+    // คัดลอกข้อความ — รองรับทั้ง HTTPS/localhost และ HTTP บน LAN (ใช้ fallback)
+    async function copyToClipboard(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+            try { await navigator.clipboard.writeText(text); return true; }
+            catch (e) { /* ตกไปใช้วิธีสำรอง */ }
+        }
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        ta.style.top = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        ta.setSelectionRange(0, ta.value.length);
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+        document.body.removeChild(ta);
+        return ok;
+    }
+
+    async function copyItem(item) {
+        const textEl = item.querySelector('.response-text');
+        if (!textEl) return;
+        const plain = htmlToPlainText(textEl.innerHTML);
+        const ok = await copyToClipboard(plain);
+        if (ok) {
+            item.classList.add('copied');
+            setTimeout(() => item.classList.remove('copied'), 1200);
+            showToast('คัดลอกแล้ว!');
+        } else {
+            showToast('ไม่สามารถคัดลอกข้อความได้');
+        }
+    }
+
+    // ===== โหมดโน๊ต =====
+    let notesCache = [];
+
+    function renderNotes() {
+        const items = notesCache.map((text, i) => `
+            <div class="response-item note-item" data-index="${i}">
+                <span class="response-text" tabindex="0" role="button">${escapeHtml(text).replace(/\n/g, '<br>')}</span>
+                <button type="button" class="note-delete" data-del="${i}" title="ลบโน๊ต" aria-label="ลบโน๊ต">✕</button>
+            </div>
+        `).join('');
+
+        responseDiv.innerHTML = `
+            <div class="note-form">
+                <textarea id="note-input" class="note-input" rows="2"
+                          placeholder="พิมพ์ข้อความที่ต้องการบันทึก..."></textarea>
+                <button type="button" id="note-save" class="note-save">บันทึก</button>
+            </div>
+            <div class="note-list">
+                ${items || '<p class="placeholder">ยังไม่มีโน๊ต — พิมพ์ข้อความด้านบนแล้วกดบันทึก</p>'}
+            </div>`;
+    }
+
+    async function openNotes() {
+        setActiveButton('__note__');
+        responseDiv.innerHTML = '<div class="loading"><span class="spinner"></span>กำลังโหลดโน๊ต...</div>';
+        try {
+            const res = await fetch('/api/notes');
+            if (!checkAuth(res)) return;
+            if (!res.ok) throw new Error('โหลดโน๊ตไม่สำเร็จ');
+            notesCache = (await res.json()).notes || [];
+            renderNotes();
+        } catch (err) {
+            responseDiv.innerHTML = `<p class="error">เกิดข้อผิดพลาด: ${err.message}</p>`;
+        }
+    }
+
+    async function saveNote(text) {
+        const res = await fetch('/api/notes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text })
+        });
+        if (!checkAuth(res)) return;
+        if (!res.ok) throw new Error('บันทึกไม่สำเร็จ');
+        notesCache = (await res.json()).notes || [];
+    }
+
+    async function deleteNote(index) {
+        const res = await fetch('/api/notes/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ index })
+        });
+        if (!checkAuth(res)) return;
+        if (!res.ok) throw new Error('ลบไม่สำเร็จ');
+        notesCache = (await res.json()).notes || [];
+    }
+
+    noteBtn.addEventListener('click', openNotes);
+
+    // ===== กดค้างเพื่อลากจัดลำดับโน๊ต =====
+    const LONG_PRESS_MS = 350;
+    let drag = null;
+    let justDragged = false;
+
+    function getNoteList() { return responseDiv.querySelector('.note-list'); }
+
+    // หา element ที่ควรแทรกไว้ "ก่อนหน้า" ตามตำแหน่ง y ของตัวชี้
+    function elementAfter(list, y) {
+        const items = [...list.querySelectorAll('.note-item:not(.dragging)')];
+        return items.find(el => {
+            const r = el.getBoundingClientRect();
+            return y < r.top + r.height / 2;
+        }) || null;
+    }
+
+    async function persistOrder() {
+        const list = getNoteList();
+        if (!list) return;
+        const order = [...list.querySelectorAll('.note-item')].map(el => Number(el.dataset.index));
+        if (order.every((v, i) => v === i)) return;   // ลำดับไม่เปลี่ยน
+        try {
+            const res = await fetch('/api/notes/reorder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ order })
+            });
+            if (!checkAuth(res)) return;
+            if (!res.ok) throw new Error('จัดลำดับไม่สำเร็จ');
+            notesCache = (await res.json()).notes || [];
+            renderNotes();
+            showToast('จัดลำดับแล้ว');
+        } catch (err) {
+            showToast(err.message);
+            openNotes();   // โหลดใหม่ให้ตรงกับ server
+        }
+    }
+
+    // ทำให้การ์ดที่ลากลอยตามตำแหน่งตัวชี้
+    function moveFloating(x, y) {
+        drag.item.style.transform =
+            `translate(${x - drag.offsetX}px, ${y - drag.offsetY}px) scale(1.02)`;
+    }
+
+    function startFloating(x, y) {
+        const item = drag.item;
+        const rect = item.getBoundingClientRect();
+        drag.offsetX = x - rect.left;
+        drag.offsetY = y - rect.top;
+
+        // ช่องว่าง (placeholder) คั่นตำแหน่งเดิม
+        const ph = document.createElement('div');
+        ph.className = 'note-placeholder';
+        ph.style.height = rect.height + 'px';
+        item.parentNode.insertBefore(ph, item.nextSibling);
+        drag.placeholder = ph;
+
+        // ยกการ์ดออกมาเป็นกล่องลอย + บังคับเคอร์เซอร์เป็นมือจับทั้งจอ
+        document.body.classList.add('note-dragging');
+        item.classList.add('dragging');
+        item.style.width = rect.width + 'px';
+        item.style.height = rect.height + 'px';
+        item.style.left = '0';
+        item.style.top = '0';
+        moveFloating(x, y);
+    }
+
+    responseDiv.addEventListener('pointerdown', e => {
+        const item = e.target.closest('.note-item');
+        if (!item || e.target.closest('.note-delete')) return;
+        if (e.button && e.button !== 0) return;   // เฉพาะคลิกซ้าย/สัมผัส
+        drag = {
+            item, pointerId: e.pointerId,
+            startX: e.clientX, startY: e.clientY,
+            lastX: e.clientX, lastY: e.clientY,
+            active: false, placeholder: null,
+            timer: setTimeout(() => {
+                drag.active = true;
+                startFloating(drag.lastX, drag.lastY);
+            }, LONG_PRESS_MS)
+        };
+    });
+
+    // ฟังที่ document เพื่อให้รับ event ตลอดการลาก แม้เมาส์ออกนอกการ์ด
+    document.addEventListener('pointermove', e => {
+        if (!drag || drag.pointerId !== e.pointerId) return;
+        drag.lastX = e.clientX;
+        drag.lastY = e.clientY;
+        if (!drag.active) {
+            // ขยับมากก่อนกดครบเวลา = ยกเลิก (ถือเป็นการเลื่อน)
+            if (Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) > 10) {
+                clearTimeout(drag.timer);
+                drag = null;
+            }
+            return;
+        }
+        e.preventDefault();
+        moveFloating(e.clientX, e.clientY);
+        const list = getNoteList();
+        if (!list) return;
+        const after = elementAfter(list, e.clientY);
+        if (after) list.insertBefore(drag.placeholder, after);
+        else list.appendChild(drag.placeholder);
+    }, { passive: false });
+
+    function endDrag(e) {
+        if (!drag || (e && drag.pointerId !== e.pointerId)) return;
+        clearTimeout(drag.timer);
+        if (drag.active) {
+            const { item, placeholder } = drag;
+            // วางการ์ดลงตำแหน่งของ placeholder แล้วล้างสไตล์ลอย
+            placeholder.parentNode.insertBefore(item, placeholder);
+            placeholder.remove();
+            item.classList.remove('dragging');
+            document.body.classList.remove('note-dragging');
+            item.style.cssText = '';
+            justDragged = true;   // กันไม่ให้ click คัดลอกหลังลาก
+            setTimeout(() => { justDragged = false; }, 80);
+            persistOrder();
+        }
+        drag = null;
+    }
+    document.addEventListener('pointerup', endDrag);
+    document.addEventListener('pointercancel', endDrag);
+
+    // Event delegation — ปุ่มหมวดหมู่
+    buttons.forEach(btn => {
+        btn.addEventListener('click', () => sendKeyword(btn.dataset.keyword));
+    });
+
+    // Event delegation — บันทึก/ลบโน๊ต และคัดลอกข้อความ
+    responseDiv.addEventListener('click', async e => {
+        // บันทึกโน๊ต
+        if (e.target.id === 'note-save') {
+            const input = document.getElementById('note-input');
+            const text = input.value.trim();
+            if (!text) { showToast('กรุณาพิมพ์ข้อความก่อน'); input.focus(); return; }
+            try {
+                await saveNote(text);
+                renderNotes();
+                showToast('บันทึกแล้ว!');
+                setTimeout(() => showToast('กดค้างที่ข้อความเพื่อจัดการเรียงลำดับ', 10000), 1500);
+            } catch (err) { showToast(err.message); }
+            return;
+        }
+        // ลบโน๊ต
+        const del = e.target.closest('.note-delete');
+        if (del) {
+            try {
+                await deleteNote(Number(del.dataset.del));
+                renderNotes();
+                showToast('ลบโน๊ตแล้ว');
+            } catch (err) { showToast(err.message); }
+            return;
+        }
+        // คัดลอกข้อความ (ข้ามถ้าเพิ่งลากจัดลำดับ)
+        if (justDragged) return;
+        const item = e.target.closest('.response-item');
+        if (item) copyItem(item);
+    });
+
+    responseDiv.addEventListener('keydown', e => {
+        // Ctrl/Cmd + Enter ในช่องโน๊ต = บันทึก
+        if (e.target.id === 'note-input' && e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            document.getElementById('note-save').click();
+            return;
+        }
+        // Enter / Space บนข้อความ = คัดลอก (ยกเว้นปุ่ม/ช่องกรอก)
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        if (e.target.matches('button, textarea, input')) return;
+        const item = e.target.closest('.response-item');
+        if (item) { e.preventDefault(); copyItem(item); }
+    });
+    </script>
+</body>
+</html>

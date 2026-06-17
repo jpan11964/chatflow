@@ -1,0 +1,481 @@
+:root {
+    --bg: #f4f6fb;
+    --surface: #ffffff;
+    --surface-2: #f8fafc;
+    --text: #1f2933;
+    --text-muted: #6b7280;
+    --border: #e5e7eb;
+    --shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 8px 24px rgba(16, 24, 40, .06);
+    --shadow-sm: 0 1px 3px rgba(16, 24, 40, .08);
+    --radius: 14px;
+
+    --blue: #2563eb;     --blue-dark: #1d4ed8;
+    --green: #16a34a;    --green-dark: #15803d;
+    --red: #e11d48;      --red-dark: #be123c;
+    --note: #f59e0b;     --note-dark: #d97706;   /* ปุ่มโน๊ต — สีส้มอำพัน */
+
+    --toolbar-bg: rgba(255, 255, 255, .85);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #0f1420;
+        --surface: #171d2b;
+        --surface-2: #1c2333;
+        --text: #e6e9f0;
+        --text-muted: #9aa4b8;
+        --border: #2a3142;
+        --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .35);
+        --shadow-sm: 0 1px 3px rgba(0, 0, 0, .4);
+        --toolbar-bg: rgba(23, 29, 43, .85);
+    }
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    font-family: "Noto Sans Thai", system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ซ่อน scrollbar แต่ยังเลื่อนได้ปกติ (ล้อเมาส์/touchpad/ลากนิ้ว) */
+html {
+    scrollbar-width: none;        /* Firefox */
+    -ms-overflow-style: none;     /* IE / Edge เก่า */
+}
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;                /* Chrome / Safari / Edge */
+}
+
+/* ===== Sticky toolbar ===== */
+.toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    padding: 8px clamp(8px, 2vw, 20px);
+    background: var(--toolbar-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    box-shadow: var(--shadow-sm);
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 700;
+    font-size: 14px;
+    margin-bottom: 8px;
+    letter-spacing: .2px;
+}
+
+
+.button-group {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.button-group:last-child { margin-bottom: 0; }
+
+.button-group button {
+    min-height: 60px;
+    padding: 6px 4px;
+    font-family: inherit;
+    font-size: clamp(11px, 2.6vw, 14px);
+    font-weight: 600;
+    line-height: 1.2;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+    transition: transform .12s ease, box-shadow .12s ease, filter .12s ease;
+}
+
+.button-group button small {
+    font-weight: 500;
+    font-size: .8em;
+    opacity: .85;
+}
+
+.button-group button:hover { transform: translateY(-2px); filter: brightness(1.06); }
+.button-group button:active { transform: translateY(0); filter: brightness(.95); }
+.button-group button:focus-visible { outline: 3px solid rgba(37, 99, 235, .5); outline-offset: 2px; }
+
+/* หมวดที่กำลังเลือกอยู่ */
+.button-group button.active {
+    box-shadow: 0 0 0 2px var(--toolbar-bg), 0 0 0 4px var(--text);
+    filter: brightness(1.12);
+    transform: translateY(-1px);
+}
+
+.group-blue  button { background: linear-gradient(135deg, var(--blue),  var(--blue-dark)); }
+.group-green button { background: linear-gradient(135deg, var(--green), var(--green-dark)); }
+.group-red   button { background: linear-gradient(135deg, var(--red),   var(--red-dark)); }
+
+/* ปุ่มโน๊ต — สีต่างจากปุ่มอื่น + ขอบเน้น */
+.note-btn {
+    background: linear-gradient(135deg, var(--note), var(--note-dark)) !important;
+    box-shadow: 0 0 0 2px var(--toolbar-bg), 0 0 0 3px var(--note);
+}
+
+/* ===== Response area ===== */
+main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: clamp(16px, 3vw, 28px);
+}
+
+.placeholder {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 48px 16px;
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+}
+
+.response { display: flex; flex-direction: column; gap: 10px; }
+
+.response-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    cursor: pointer;
+    transition: transform .12s ease, border-color .12s ease, box-shadow .12s ease, background .12s ease;
+    animation: rise .25s ease both;
+}
+
+.response-item:hover { transform: translateY(-2px); border-color: var(--blue); }
+.response-item:focus-visible { outline: 3px solid rgba(37, 99, 235, .5); outline-offset: 2px; }
+
+.response-text {
+    flex: 1;
+    font-size: 16px;
+    color: var(--text);
+    word-break: break-word;
+}
+
+/* เมื่อคัดลอกแล้ว: การ์ดเขียว + เครื่องหมาย ✓ */
+.response-item.copied {
+    border-color: var(--green);
+    background: color-mix(in srgb, var(--green) 10%, var(--surface));
+}
+.response-item.copied::after {
+    content: "✓";
+    flex-shrink: 0;
+    font-weight: 700;
+    color: var(--green);
+    font-size: 18px;
+}
+
+/* การ์ดโน๊ต: เมื่อคัดลอก ซ่อนปุ่ม ✕ แล้วให้ ✓ มาแทนตำแหน่งเดิม */
+.note-item.copied .note-delete { display: none; }
+.note-item.copied::after {
+    width: 28px;
+    text-align: center;
+}
+
+/* ===== States ===== */
+.loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 40px;
+    color: var(--text-muted);
+}
+
+.spinner {
+    width: 18px;
+    height: 18px;
+    border: 3px solid var(--border);
+    border-top-color: var(--blue);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+}
+
+.error {
+    text-align: center;
+    color: var(--red);
+    padding: 24px;
+    background: color-mix(in srgb, var(--red) 8%, var(--surface));
+    border-radius: var(--radius);
+}
+
+/* ===== Toast ===== */
+.toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translate(-50%, 16px);
+    background: var(--text);
+    color: var(--bg);
+    padding: 10px 20px;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 14px;
+    box-shadow: var(--shadow);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s ease, transform .2s ease;
+    z-index: 100;
+}
+
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* ===== Responsive ===== */
+/* จอแคบ (เช่น side browser) — คงไว้ 4 คอลัมน์ ปุ่มเล็กลง เหลือพื้นที่ข้อความให้มากที่สุด */
+@media (max-width: 640px) {
+    .button-group button { min-height: 60px; border-radius: 9px; }
+    .response-text { font-size: 15px; }
+    main { padding: 12px; }
+    .placeholder { padding: 28px 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+}
+
+/* ===== แถบผู้ใช้ ===== */
+.user-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.user-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.user-name strong { color: var(--text); }
+
+.user-switch {
+    flex-shrink: 0;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 4px 12px;
+    cursor: pointer;
+    transition: all .12s ease;
+}
+.user-switch:hover { color: var(--blue); border-color: var(--blue); }
+
+/* ===== ฟอร์มบันทึกโน๊ต ===== */
+.note-form {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.note-input {
+    flex: 1;
+    font-family: inherit;
+    font-size: 14px;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 12px;
+    resize: vertical;
+    min-height: 38px;
+    transition: border-color .12s ease;
+}
+.note-input:focus { outline: none; border-color: var(--note); }
+.note-input::placeholder { color: var(--text-muted); }
+
+.note-save {
+    flex-shrink: 0;
+    align-self: stretch;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(135deg, var(--note), var(--note-dark));
+    border: none;
+    border-radius: var(--radius);
+    padding: 0 22px;
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+    transition: transform .12s ease, filter .12s ease;
+}
+.note-save:hover { transform: translateY(-1px); filter: brightness(1.06); }
+.note-save:active { transform: translateY(0); }
+
+.note-list { display: flex; flex-direction: column; gap: 10px; }
+
+/* การ์ดโน๊ต — มีปุ่มลบ + ตัวอักษรเล็กกว่าข้อความสุ่ม + ลากจัดลำดับได้ */
+.note-item {
+    border-left: 3px solid var(--note);
+    cursor: default;            /* ชี้เฉยๆ = ลูกศรปกติ (มือจับโผล่ตอนลากเท่านั้น) */
+    user-select: none;          /* กันการลากแล้วเลือกข้อความ */
+    -webkit-user-select: none;
+    touch-action: none;         /* ให้ลากด้วยสัมผัสได้ */
+}
+
+/* แสดงข้อความโน๊ตสูงสุด 4 บรรทัด เกินนั้นเติม ... */
+.note-item .response-text {
+    font-size: 13px;
+    line-height: 1.7;           /* เว้นระยะบรรทัดให้ ... ไม่ดูอึดอัด */
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* การ์ดที่กำลังลาก — ลอยตามเมาส์ */
+.note-item.dragging {
+    cursor: grabbing;
+    position: fixed;
+    z-index: 1000;
+    pointer-events: none;
+    transform-origin: top left;
+    border-color: var(--note);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, .28);
+    transition: none;           /* ตามเมาส์ทันที ไม่หน่วง */
+    animation: none;            /* ปิด rise — กันไม่ให้ transform:none ทับการลาก */
+    opacity: .96;
+}
+
+/* ระหว่างลาก — บังคับเคอร์เซอร์มือจับ (ขาวขอบดำ) ทั้งหน้าจอ */
+body.note-dragging,
+body.note-dragging * {
+    cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='30' height='30' viewBox='0 0 30 30'%3E%3Cg fill='%23fff' stroke='%23000' stroke-width='1.6' stroke-linejoin='round'%3E%3Crect x='8' y='12' width='15' height='12' rx='5'/%3E%3Ccircle cx='10.5' cy='12' r='2.5'/%3E%3Ccircle cx='14.5' cy='10.8' r='2.7'/%3E%3Ccircle cx='18.5' cy='11.4' r='2.7'/%3E%3Ccircle cx='21.6' cy='13' r='2.4'/%3E%3Ccircle cx='7.4' cy='16' r='2.4'/%3E%3C/g%3E%3C/svg%3E") 15 15, grabbing !important;
+}
+
+/* ช่องว่างบอกตำแหน่งที่จะวาง */
+.note-placeholder {
+    border: 2px dashed var(--note);
+    border-radius: var(--radius);
+    background: color-mix(in srgb, var(--note) 10%, transparent);
+    margin: 0;
+}
+
+.note-delete {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    font-size: 14px;
+    line-height: 1;
+    color: var(--text-muted);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all .12s ease;
+}
+.note-delete:hover { color: #fff; background: var(--red); border-color: var(--red); }
+
+/* ===== หน้า Login ===== */
+.login-body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 20px;
+    background:
+        radial-gradient(900px circle at 0% 0%, color-mix(in srgb, var(--blue) 14%, transparent), transparent 45%),
+        radial-gradient(900px circle at 100% 100%, color-mix(in srgb, var(--green) 14%, transparent), transparent 45%),
+        var(--bg);
+}
+
+.login-card {
+    width: 100%;
+    max-width: 360px;
+    padding: clamp(24px, 5vw, 36px);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    box-shadow: var(--shadow);
+    text-align: center;
+    animation: rise .3s ease both;
+}
+
+.login-brand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-weight: 700;
+    font-size: 24px;
+}
+
+.brand-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--blue), var(--green));
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue) 14%, transparent);
+}
+
+.login-sub {
+    color: var(--text-muted);
+    font-size: 14px;
+    margin: 8px 0 24px;
+}
+
+#login-form { display: flex; flex-direction: column; gap: 12px; }
+
+.login-input {
+    font-family: inherit;
+    font-size: 16px;
+    text-align: center;
+    color: var(--text);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    transition: border-color .12s ease;
+}
+.login-input:focus { outline: none; border-color: var(--blue); }
+
+.login-btn {
+    font-family: inherit;
+    font-size: 16px;
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(135deg, var(--blue), var(--blue-dark));
+    border: none;
+    border-radius: 12px;
+    padding: 14px;
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+    transition: transform .12s ease, filter .12s ease;
+}
+.login-btn:hover { transform: translateY(-1px); filter: brightness(1.06); }
+.login-btn:active { transform: translateY(0); }
+
+.login-error {
+    color: var(--red);
+    font-size: 13px;
+    min-height: 18px;
+    margin: 10px 0 0;
+}

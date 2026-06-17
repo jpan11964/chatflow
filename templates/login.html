@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0d6efd">
+    <title>ChatFlow — เข้าสู่ระบบ</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body class="login-body">
+    <main class="login-card">
+        <div class="login-brand">
+            <span class="brand-dot"></span>
+            <span>ChatFlow</span>
+        </div>
+        <p class="login-sub">กรอกชื่อผู้ใช้เพื่อเริ่มใช้งาน</p>
+
+        <form id="login-form" autocomplete="off">
+            <input type="text" id="username" class="login-input"
+                   placeholder="ชื่อผู้ใช้ของคุณ" maxlength="60" required autofocus>
+            <button type="submit" class="login-btn">เข้าสู่ระบบ</button>
+        </form>
+        <p id="login-error" class="login-error"></p>
+    </main>
+
+    <script>
+    const form = document.getElementById('login-form');
+    const input = document.getElementById('username');
+    const errorEl = document.getElementById('login-error');
+
+    // ถ้าเคยล็อกอินไว้แล้ว เติมชื่อเดิมให้
+    const saved = localStorage.getItem('chatflow_user');
+    if (saved) input.value = saved;
+
+    form.addEventListener('submit', async e => {
+        e.preventDefault();
+        const name = input.value.trim();
+        if (!name) {
+            errorEl.textContent = 'กรุณากรอกชื่อผู้ใช้';
+            return;
+        }
+        errorEl.textContent = '';
+        try {
+            const res = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user: name })
+            });
+            if (!res.ok) throw new Error();
+            localStorage.setItem('chatflow_user', name);   // ไว้เติมชื่อให้ครั้งหน้า
+            window.location.href = '/app';
+        } catch (err) {
+            errorEl.textContent = 'เข้าสู่ระบบไม่สำเร็จ ลองอีกครั้ง';
+        }
+    });
+    </script>
+</body>
+</html>
