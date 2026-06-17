@@ -8,6 +8,7 @@ from pathlib import Path
 
 from flask import (Flask, jsonify, redirect, render_template, request,
                    session, url_for)
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 try:
     from dotenv import load_dotenv
@@ -66,6 +67,9 @@ if mongo_client is not None:
         SESSION_MONGODB_COLLECT="sessions",
     )
     Session(app)
+
+# อยู่หลัง reverse proxy ของ Render — ใช้ X-Forwarded-For เพื่อให้ได้ IP ของผู้ใช้จริง
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 
 # ===== Log แบบอ่านง่าย (console เท่านั้น — ไม่เก็บไฟล์) =====
