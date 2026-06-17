@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
-<body>
+<body data-user="{{ user }}">
     <header class="toolbar">
         <div class="user-bar">
             <span class="user-name"><strong id="user-display"></strong></span>
@@ -49,7 +49,7 @@
 
     <script>
     // ===== ผู้ใช้จาก session (ฝั่ง server) =====
-    const username = {{ user|tojson }};
+    const username = document.body.dataset.user || '';
     document.getElementById('user-display').textContent = username || '';
     document.getElementById('change-user').addEventListener('click', () => {
         window.location.href = '/logout';   // ออกจากระบบ + ล้าง session
