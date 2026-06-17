@@ -369,7 +369,7 @@
                 await saveNote(text);
                 renderNotes();
                 showToast('บันทึกแล้ว!');
-                setTimeout(() => showToast('กดค้างที่ข้อความเพื่อจัดการเรียงลำดับ', 10000), 1500);
+                setTimeout(() => showToast('กดค้างที่ข้อความและลาก เพื่อจัดการเรียงลำดับ', 10000), 1500);
             } catch (err) { showToast(err.message); }
             return;
         }
