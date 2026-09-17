@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 import os
@@ -23,6 +24,24 @@ from pymongo.errors import PyMongoError
 BASE_DIR = Path(__file__).resolve().parent
 RESPONSES_FILE = BASE_DIR / "responses.json"
 
+
+def _compute_version() -> str:
+    """เวอร์ชันของแอป — เปลี่ยนทุกครั้งที่ deploy (ใช้บังคับ client รีเฟรช)"""
+    commit = os.environ.get("RENDER_GIT_COMMIT")
+    if commit:
+        return commit[:12]
+    # สำรอง (รันในเครื่อง): แฮชจากเวลาแก้ไขไฟล์หลัก
+    parts = []
+    for name in ("app.py", "templates/index.html", "static/styles.css"):
+        try:
+            parts.append(str((BASE_DIR / name).stat().st_mtime_ns))
+        except OSError:
+            pass
+    return hashlib.sha1("|".join(parts).encode()).hexdigest()[:12]
+
+
+APP_VERSION = _compute_version()
+
 # จำนวนข้อความที่สุ่มตอบกลับ (ค่าเริ่มต้น และค่าเฉพาะบาง keyword)
 DEFAULT_SAMPLE_SIZE = 5
 SAMPLE_OVERRIDES = {
@@ -31,12 +50,14 @@ SAMPLE_OVERRIDES = {
 
 MAX_NOTE_LEN = 5000
 MAX_NOTES_PER_USER = 500
+MAX_RESPONSE_LEN = 5000
 _user_lock = threading.Lock()
 
 # ===== MongoDB =====
 MONGODB_URI = os.environ.get("MONGODB_URI", "")
 DB_NAME = os.environ.get("MONGODB_DB", "chatflow")
 COLLECTION_NAME = "userdata"
+RESPONSES_COLLECTION = "responses"
 
 # MongoClient เชื่อมแบบ lazy (ไม่ติดต่อจริงจนกว่าจะใช้) — สร้างได้แม้ DB ยังไม่พร้อม
 mongo_client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=8000) if MONGODB_URI else None
@@ -56,6 +77,7 @@ app.config.update(
     PERMANENT_SESSION_LIFETIME=timedelta(days=365),
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_PERMANENT=True,
+    TEMPLATES_AUTO_RELOAD=True,   # แก้ HTML แล้ว refresh เห็นเลย ไม่ต้องรีสตาร์ท
 )
 
 if mongo_client is not None:
@@ -124,7 +146,39 @@ def set_notes(user: str, notes: list) -> None:
     get_collection().update_one({"_id": user}, {"$set": {"notes": notes}}, upsert=True)
 
 
-responses = load_responses()
+# ===== คลังคำสุ่มใน MongoDB (1 เอกสารต่อปุ่ม: {_id: keyword, responses: [...]}) =====
+def get_responses_collection():
+    if mongo_client is None:
+        raise RuntimeError("ยังไม่ได้ตั้งค่า MONGODB_URI")
+    return mongo_client[DB_NAME][RESPONSES_COLLECTION]
+
+
+def get_keyword_responses(keyword: str) -> list:
+    doc = get_responses_collection().find_one({"_id": keyword})
+    return (doc or {}).get("responses", [])
+
+
+def keyword_exists(keyword: str) -> bool:
+    return get_responses_collection().find_one({"_id": keyword}, {"_id": 1}) is not None
+
+
+def seed_responses_if_empty() -> None:
+    """ครั้งแรก: ย้ายข้อมูลจาก responses.json เข้า MongoDB ถ้า collection ยังว่าง"""
+    try:
+        col = get_responses_collection()
+        if col.estimated_document_count() > 0:
+            return
+        data = load_responses()
+        docs = [{"_id": k, "responses": v} for k, v in data.items() if isinstance(v, list)]
+        if docs:
+            col.insert_many(docs)
+            _activity.info(f"seed responses: {len(docs)} keywords เข้าฐานข้อมูล")
+    except Exception as e:  # ไม่ให้ startup ล้มถ้า DB ยังไม่พร้อม
+        _activity.error(f"seed responses failed: {e}")
+
+
+if mongo_client is not None:
+    seed_responses_if_empty()
 
 
 @app.errorhandler(PyMongoError)
@@ -138,7 +192,7 @@ def login_page():
     """หน้าแรก — ถ้าล็อกอินค้างไว้แล้วเข้าแอปเลย ไม่ต้องกรอกชื่อใหม่"""
     if current_user():
         return redirect(url_for("app_page"))
-    return render_template("login.html")
+    return render_template("login.html", version=APP_VERSION)
 
 
 @app.route("/app")
@@ -147,7 +201,13 @@ def app_page():
     user = current_user()
     if not user:
         return redirect(url_for("login_page"))
-    return render_template("index.html", user=user)
+    return render_template("index.html", user=user, version=APP_VERSION)
+
+
+@app.route("/version")
+def version():
+    """ให้ client ตรวจว่ามีเวอร์ชันใหม่หรือยัง (ไว้บังคับรีเฟรชหลัง deploy)"""
+    return jsonify({"version": APP_VERSION})
 
 
 @app.route("/api/login", methods=["POST"])
@@ -177,11 +237,11 @@ def generate():
     data = request.get_json(silent=True) or {}
     keyword = (data.get("keyword") or "").strip()
 
-    if keyword not in responses:
+    pool = get_keyword_responses(keyword)
+    if not pool:
         return jsonify({"error": "Invalid keyword"}), 400
 
     log_activity(current_user(), f"กดปุ่ม '{keyword}'")
-    pool = responses[keyword]
     sample_size = SAMPLE_OVERRIDES.get(keyword, DEFAULT_SAMPLE_SIZE)
     picked = random.sample(pool, min(sample_size, len(pool)))
 
@@ -264,15 +324,49 @@ def reorder_notes():
         return jsonify({"notes": notes})
 
 
+@app.route("/api/responses/keywords", methods=["GET"])
+def list_keywords():
+    """รายชื่อปุ่ม (keyword) ที่มีในคลัง สำหรับ dropdown เพิ่มคำ"""
+    user = current_user()
+    if not user:
+        return jsonify({"error": "unauthorized"}), 401
+    keywords = sorted(d["_id"] for d in get_responses_collection().find({}, {"_id": 1}))
+    return jsonify({"keywords": keywords})
+
+
+@app.route("/api/responses", methods=["POST"])
+def add_response():
+    """เพิ่มคำใหม่เข้าคลังของปุ่มที่ระบุ"""
+    user = current_user()
+    if not user:
+        return jsonify({"error": "unauthorized"}), 401
+
+    body = request.get_json(silent=True) or {}
+    keyword = (body.get("keyword") or "").strip()
+    text = (body.get("text") or "").strip()
+    if not keyword or not text:
+        return jsonify({"error": "missing keyword or text"}), 400
+    if not keyword_exists(keyword):
+        return jsonify({"error": "unknown keyword"}), 400
+
+    text = text[:MAX_RESPONSE_LEN]
+    get_responses_collection().update_one({"_id": keyword}, {"$push": {"responses": text}})
+    preview = text[:40] + ("..." if len(text) > 40 else "")
+    log_activity(user, f"เพิ่มคำที่ปุ่ม '{keyword}': \"{preview}\"")
+    return jsonify({"ok": True})
+
+
 @app.route("/health")
 def health():
     """ตรวจสอบสถานะระบบ + การเชื่อมต่อ MongoDB"""
     db_ok = True
+    keywords = 0
     try:
         get_collection().database.client.admin.command("ping")
+        keywords = get_responses_collection().estimated_document_count()
     except Exception:
         db_ok = False
-    return jsonify({"status": "ok", "keywords": len(responses), "mongo": db_ok})
+    return jsonify({"status": "ok", "keywords": keywords, "mongo": db_ok})
 
 
 if __name__ == "__main__":

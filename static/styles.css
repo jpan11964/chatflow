@@ -273,7 +273,10 @@ main {
 }
 .user-name strong { color: var(--text); }
 
-.user-switch {
+.user-actions { display: flex; gap: 6px; flex-shrink: 0; position: relative; }
+
+.user-switch,
+.user-add {
     flex-shrink: 0;
     font-family: inherit;
     font-size: 12px;
@@ -287,6 +290,115 @@ main {
     transition: all .12s ease;
 }
 .user-switch:hover { color: var(--blue); border-color: var(--blue); }
+
+/* ปุ่มเพิ่มคำ — เน้นด้วยสีโน๊ต */
+.user-add {
+    color: #fff;
+    background: linear-gradient(135deg, var(--note), var(--note-dark));
+    border-color: transparent;
+}
+.user-add:hover { filter: brightness(1.08); }
+
+/* ===== ไฮไลต์ + ป้ายแจ้งฟีเจอร์ใหม่ ===== */
+.user-add.highlight-new {
+    animation: pulse-note 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse-note {
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--note) 70%, transparent); }
+    50%      { box-shadow: 0 0 0 7px color-mix(in srgb, var(--note) 0%, transparent); }
+}
+
+.feature-callout[hidden] { display: none; }   /* ให้แอตทริบิวต์ hidden มีผลจริง (ทับ display:flex) */
+
+.feature-callout {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;                              /* ยึดขวา ยืดไปทางซ้าย — ไม่ล้นขอบจอ */
+    left: auto;
+    z-index: 120;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: max-content;
+    max-width: min(280px, calc(100vw - 24px));
+    padding: 10px 12px;
+    background: linear-gradient(135deg, var(--note), var(--note-dark));
+    color: #fff;
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    animation: callout-in .3s ease both;
+}
+
+/* ลูกศรชี้ขึ้นไปที่ปุ่ม "เพิ่มคำ" (อยู่มุมขวาบนของพื้นที่ผลลัพธ์) */
+.feature-callout::before {
+    content: "";
+    position: absolute;
+    bottom: 100%;
+    right: 24px;
+    border: 7px solid transparent;
+    border-bottom-color: var(--note);
+}
+
+/* แถบปุ่มเหนือพื้นที่ผลลัพธ์ (มุมขวาบน) */
+.results-bar {
+    display: flex;
+    justify-content: flex-end;
+    position: relative;
+    margin-bottom: 12px;
+}
+
+.feature-callout-text { font-size: 13px; font-weight: 500; line-height: 1.4; }
+.feature-callout-text strong { font-weight: 700; }
+
+.feature-callout-close {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    font-size: 12px;
+    line-height: 1;
+    color: #fff;
+    background: rgba(255, 255, 255, .2);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background .12s ease;
+}
+.feature-callout-close:hover { background: rgba(255, 255, 255, .35); }
+
+@keyframes callout-in {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: none; }
+}
+
+/* ===== ฟอร์มเพิ่มคำใหม่ ===== */
+.addword-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 640px;
+    margin: 0 auto;
+}
+.addword-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+.addword-select {
+    font-family: inherit;
+    font-size: 15px;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    cursor: pointer;
+}
+.addword-select:focus { outline: none; border-color: var(--note); }
+.addword-form .note-input { width: 100%; }
+.addword-form .note-save { align-self: flex-start; padding: 10px 24px; }
+.addword-hint { font-size: 12px; color: var(--text-muted); margin: 2px 0 0; }
 
 /* ===== ฟอร์มบันทึกโน๊ต ===== */
 .note-form {

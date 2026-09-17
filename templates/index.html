@@ -8,13 +8,15 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v={{ version }}">
 </head>
-<body data-user="{{ user }}">
+<body data-user="{{ user }}" data-version="{{ version }}">
     <header class="toolbar">
         <div class="user-bar">
             <span class="user-name"><strong id="user-display"></strong></span>
-            <button type="button" id="change-user" class="user-switch">เปลี่ยนผู้ใช้</button>
+            <div class="user-actions">
+                <button type="button" id="change-user" class="user-switch">เปลี่ยนผู้ใช้</button>
+            </div>
         </div>
 
         <nav class="button-group group-blue" aria-label="ทักทายและข้อมูล">
@@ -40,6 +42,13 @@
     </header>
 
     <main>
+        <div class="results-bar">
+            <button type="button" id="add-word-btn" class="user-add">+ เพิ่มคำ</button>
+            <div id="feature-callout" class="feature-callout" hidden>
+                <span class="feature-callout-text"><strong>ใหม่!</strong> เพิ่มคำตอบเองได้แล้ว — กดปุ่ม "เพิ่มคำ"</span>
+                <button type="button" id="feature-callout-close" class="feature-callout-close" aria-label="ปิด">✕</button>
+            </div>
+        </div>
         <div id="response" class="response" aria-live="polite">
             <p class="placeholder">เลือกหมวดด้านบนเพื่อสุ่มข้อความตอบกลับ แล้วคลิกข้อความเพื่อคัดลอก</p>
         </div>
@@ -61,12 +70,34 @@
         return true;
     }
 
+    // ===== ตรวจเวอร์ชัน: มี deploy ใหม่ → รีเฟรชอัตโนมัติ (ยังล็อกอินอยู่) =====
+    const APP_VERSION = document.body.dataset.version || '';
+    let reloading = false;
+    async function checkVersion() {
+        if (reloading || !APP_VERSION) return;
+        try {
+            const res = await fetch('/version', { cache: 'no-store' });
+            if (!res.ok) return;
+            const v = (await res.json()).version;
+            if (v && v !== APP_VERSION) {
+                reloading = true;
+                showToast('มีอัปเดตใหม่ กำลังรีเฟรช...', 4000);
+                setTimeout(() => location.reload(), 1200);
+            }
+        } catch (e) { /* ออฟไลน์ชั่วคราว ข้ามไป */ }
+    }
+    setInterval(checkVersion, 45000);   // ทุก 45 วินาที
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) checkVersion();   // กลับมาที่แท็บก็เช็คทันที
+    });
+
     const responseDiv = document.getElementById('response');
     const toast = document.getElementById('toast');
     const buttons = document.querySelectorAll('.button-group button[data-keyword]');
     const noteBtn = document.getElementById('note-btn');
 
     let lastSignature = null;    // ลายเซ็นชุดข้อความล่าสุด (กันสุ่มซ้ำ)
+    let currentKeyword = null;   // ปุ่มหมวดที่ผู้ใช้กดล่าสุด (ไว้ตั้งค่าเริ่มต้นตอนเพิ่มคำ)
 
     // หนีอักขระ HTML (สำหรับข้อความที่ผู้ใช้กรอกเอง — กัน XSS)
     function escapeHtml(str) {
@@ -100,6 +131,7 @@
     }
 
     async function sendKeyword(keyword) {
+        currentKeyword = keyword;
         setActiveButton(keyword);
 
         responseDiv.innerHTML = '<div class="loading"><span class="spinner"></span>กำลังสุ่มข้อความ...</div>';
@@ -227,6 +259,72 @@
     }
 
     noteBtn.addEventListener('click', openNotes);
+
+    // ===== โหมดเพิ่มคำใหม่เข้าคลังสุ่ม =====
+    const addWordBtn = document.getElementById('add-word-btn');
+
+    function buildKeywordOptions() {
+        return [...buttons].map(b => {
+            const kw = b.dataset.keyword;
+            const label = b.textContent.replace(/\s+/g, ' ').trim();
+            const selected = kw === currentKeyword ? ' selected' : '';
+            return `<option value="${escapeHtml(kw)}"${selected}>${escapeHtml(label)}</option>`;
+        }).join('');
+    }
+
+    function openAddWord() {
+        dismissFeatureCallout();
+        setActiveButton('__addword__');
+        responseDiv.innerHTML = `
+            <div class="addword-form">
+                <label class="addword-label" for="addword-keyword">เลือกปุ่มปลายทาง</label>
+                <select id="addword-keyword" class="addword-select">${buildKeywordOptions()}</select>
+                <label class="addword-label" for="addword-input">ข้อความใหม่</label>
+                <textarea id="addword-input" class="note-input" rows="4"
+                          placeholder="พิมพ์คำ/ข้อความใหม่ที่จะเพิ่มลงปุ่มนี้..."></textarea>
+                <button type="button" id="addword-save" class="note-save">เพิ่มคำ</button>
+                <p class="addword-hint">คำที่เพิ่มจะถูกนำไปสุ่มตอบเมื่อกดปุ่มนั้น (ทุกคนเห็นร่วมกัน)</p>
+            </div>`;
+        // ตั้งค่าเริ่มต้น dropdown เป็นปุ่มที่ผู้ใช้กดล่าสุด (ยังเปลี่ยนเองได้)
+        const kwSelect = document.getElementById('addword-keyword');
+        if (currentKeyword) kwSelect.value = currentKeyword;
+        document.getElementById('addword-input').focus();
+    }
+
+    async function saveResponse(keyword, text) {
+        const res = await fetch('/api/responses', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ keyword, text })
+        });
+        if (!checkAuth(res)) return false;
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error === 'unknown keyword' ? 'ไม่พบปุ่มนี้' : 'เพิ่มคำไม่สำเร็จ');
+        }
+        return true;
+    }
+
+    addWordBtn.addEventListener('click', openAddWord);
+
+    // ===== ป้ายแจ้งฟีเจอร์ใหม่ (แสดงครั้งเดียวต่อเบราว์เซอร์) =====
+    const FEATURE_KEY = 'chatflow_seen_addword_v1';
+    const calloutEl = document.getElementById('feature-callout');
+
+    function dismissFeatureCallout() {
+        addWordBtn.classList.remove('highlight-new');
+        if (calloutEl) calloutEl.hidden = true;
+        try { localStorage.setItem(FEATURE_KEY, '1'); } catch (e) {}
+    }
+
+    let alreadySeen = false;
+    try { alreadySeen = localStorage.getItem(FEATURE_KEY) === '1'; } catch (e) {}
+    if (!alreadySeen && calloutEl) {
+        addWordBtn.classList.add('highlight-new');
+        calloutEl.hidden = false;
+        document.getElementById('feature-callout-close')
+            .addEventListener('click', dismissFeatureCallout);
+    }
 
     // ===== กดค้างเพื่อลากจัดลำดับโน๊ต =====
     const LONG_PRESS_MS = 350;
@@ -373,6 +471,22 @@
             } catch (err) { showToast(err.message); }
             return;
         }
+        // เพิ่มคำใหม่เข้าคลัง
+        if (e.target.id === 'addword-save') {
+            const kwSel = document.getElementById('addword-keyword');
+            const input = document.getElementById('addword-input');
+            const keyword = kwSel.value;
+            const text = input.value.trim();
+            if (!text) { showToast('กรุณาพิมพ์ข้อความก่อน'); input.focus(); return; }
+            try {
+                if (await saveResponse(keyword, text)) {
+                    input.value = '';
+                    input.focus();
+                    showToast('เพิ่มคำแล้ว!');
+                }
+            } catch (err) { showToast(err.message); }
+            return;
+        }
         // ลบโน๊ต
         const del = e.target.closest('.note-delete');
         if (del) {
@@ -394,6 +508,12 @@
         if (e.target.id === 'note-input' && e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
             e.preventDefault();
             document.getElementById('note-save').click();
+            return;
+        }
+        // Ctrl/Cmd + Enter ในช่องเพิ่มคำ = เพิ่มคำ
+        if (e.target.id === 'addword-input' && e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            document.getElementById('addword-save').click();
             return;
         }
         // Enter / Space บนข้อความ = คัดลอก (ยกเว้นปุ่ม/ช่องกรอก)
