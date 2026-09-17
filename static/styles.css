@@ -190,6 +190,54 @@ main {
     text-align: center;
 }
 
+/* ===== ปุ่มติดดาว (ปักหมุด) ===== */
+.star-btn {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    font-size: 25px;
+    line-height: 1;
+    color: var(--note);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    opacity: 0;                       /* ซ่อนไว้ก่อน */
+    transition: opacity .12s ease, transform .12s ease;
+}
+.response-item:hover .star-btn,
+.response-item:focus-within .star-btn { opacity: .75; }   /* ชี้แล้วเห็นดาวกรอบ */
+.star-btn:hover { opacity: 1; transform: scale(1.15); }
+.response-item.pinned .star-btn { opacity: 1; }           /* ปักหมุดแล้ว = ดาวเต็มเสมอ */
+
+.star-btn {
+    flex-shrink: 0;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    font-size: 27px;
+    line-height: 1;
+    color: var(--note);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity .12s ease, transform .12s ease;
+}
+
+.response-item.pinned { border-color: var(--note); }
+
+/* คำที่เพิ่งเพิ่มใหม่ — ไฮไลต์ */
+.response-item.just-added {
+    border-color: var(--note);
+    background: color-mix(in srgb, var(--note) 12%, var(--surface));
+    animation: flash-new 1.4s ease;
+}
+@keyframes flash-new {
+    0%   { background: color-mix(in srgb, var(--note) 40%, var(--surface)); }
+    100% { background: color-mix(in srgb, var(--note) 12%, var(--surface)); }
+}
+
 /* ===== States ===== */
 .loading {
     display: flex;

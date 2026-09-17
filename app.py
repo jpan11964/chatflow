@@ -146,6 +146,17 @@ def set_notes(user: str, notes: list) -> None:
     get_collection().update_one({"_id": user}, {"$set": {"notes": notes}}, upsert=True)
 
 
+# ===== ข้อความปักหมุด (ต่อผู้ใช้ ต่อปุ่ม) — เก็บใน userdata: {pins: {keyword: [text,...]}} =====
+def get_pins(user: str, keyword: str = None):
+    doc = get_collection().find_one({"_id": user}) or {}
+    pins = doc.get("pins", {})
+    if not isinstance(pins, dict):
+        pins = {}
+    if keyword is None:
+        return pins
+    return pins.get(keyword, [])
+
+
 # ===== คลังคำสุ่มใน MongoDB (1 เอกสารต่อปุ่ม: {_id: keyword, responses: [...]}) =====
 def get_responses_collection():
     if mongo_client is None:
@@ -354,6 +365,50 @@ def add_response():
     preview = text[:40] + ("..." if len(text) > 40 else "")
     log_activity(user, f"เพิ่มคำที่ปุ่ม '{keyword}': \"{preview}\"")
     return jsonify({"ok": True})
+
+
+@app.route("/api/pins", methods=["GET"])
+def list_pins():
+    """ดึงรายการข้อความปักหมุดของผู้ใช้สำหรับปุ่มที่ระบุ"""
+    user = current_user()
+    if not user:
+        return jsonify({"error": "unauthorized"}), 401
+    keyword = (request.args.get("keyword") or "").strip()
+    return jsonify({"pins": get_pins(user, keyword) if keyword else []})
+
+
+@app.route("/api/pins/toggle", methods=["POST"])
+def toggle_pin():
+    """ปักหมุด/เลิกปักหมุดข้อความของปุ่มหนึ่ง (สลับสถานะ)"""
+    user = current_user()
+    if not user:
+        return jsonify({"error": "unauthorized"}), 401
+
+    body = request.get_json(silent=True) or {}
+    keyword = (body.get("keyword") or "").strip()
+    text = (body.get("text") or "")[:MAX_RESPONSE_LEN]
+    if not keyword or not text.strip():
+        return jsonify({"error": "missing keyword or text"}), 400
+
+    with _user_lock:
+        doc = get_collection().find_one({"_id": user}) or {}
+        pins = doc.get("pins", {})
+        if not isinstance(pins, dict):
+            pins = {}
+        current = pins.get(keyword, [])
+        if text in current:
+            current = [t for t in current if t != text]
+            pinned = False
+        else:
+            current = [text] + current
+            pinned = True
+        pins[keyword] = current
+        get_collection().update_one({"_id": user}, {"$set": {"pins": pins}}, upsert=True)
+
+    action = "ปักหมุด" if pinned else "เลิกปักหมุด"
+    preview = text.replace("\n", " ")[:40]
+    log_activity(user, f"{action}ข้อความที่ปุ่ม '{keyword}': \"{preview}\"")
+    return jsonify({"pinned": pinned, "pins": current})
 
 
 @app.route("/health")

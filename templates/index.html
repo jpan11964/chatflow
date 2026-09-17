@@ -130,7 +130,49 @@
         noteBtn.classList.toggle('active', keyword === '__note__');
     }
 
-    async function sendKeyword(keyword) {
+    // ดึงรายการปักหมุดของปุ่ม
+    async function getPins(keyword) {
+        try {
+            const res = await fetch('/api/pins?keyword=' + encodeURIComponent(keyword));
+            if (!res.ok) return [];
+            return (await res.json()).pins || [];
+        } catch (e) { return []; }
+    }
+
+    // ปักหมุด/เลิกปักหมุด — คืนค่า true ถ้าปักหมุดอยู่
+    async function togglePin(keyword, text) {
+        const res = await fetch('/api/pins/toggle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ keyword, text })
+        });
+        if (!checkAuth(res)) return false;
+        if (!res.ok) throw new Error('ปักหมุดไม่สำเร็จ');
+        return (await res.json()).pinned;
+    }
+
+    // แสดงผล: คำใหม่ (ถ้ามี) → ปักหมุด → สุ่ม (ตัดตัวซ้ำ)
+    function renderResults(randomList, pins, highlightText) {
+        const seen = new Set();
+        const items = [];
+        const add = (text, pinned, highlight) => {
+            if (seen.has(text)) return;
+            seen.add(text);
+            items.push({ text, pinned, highlight });
+        };
+        if (highlightText) add(highlightText, pins.includes(highlightText), true);
+        pins.forEach(p => add(p, true, false));
+        randomList.forEach(r => add(r, pins.includes(r), false));
+
+        responseDiv.innerHTML = items.map((it, i) => `
+            <div class="response-item${it.pinned ? ' pinned' : ''}${it.highlight ? ' just-added' : ''}" tabindex="0" role="button" data-index="${i}">
+                <button type="button" class="star-btn" aria-label="ปักหมุด">${it.pinned ? '★' : '☆'}</button>
+                <span class="response-text">${it.text}</span>
+            </div>
+        `).join('');
+    }
+
+    async function sendKeyword(keyword, highlightText = null) {
         currentKeyword = keyword;
         setActiveButton(keyword);
 
@@ -155,11 +197,8 @@
                 if (signature !== lastSignature) { lastSignature = signature; break; }
             }
 
-            responseDiv.innerHTML = data.responses.map((msg, i) => `
-                <div class="response-item" tabindex="0" role="button" data-index="${i}">
-                    <span class="response-text">${msg}</span>
-                </div>
-            `).join('');
+            const pins = await getPins(keyword);
+            renderResults(data.responses, pins, highlightText);
         } catch (err) {
             responseDiv.innerHTML = `<p class="error">เกิดข้อผิดพลาด: ${err.message}</p>`;
         }
@@ -480,10 +519,24 @@
             if (!text) { showToast('กรุณาพิมพ์ข้อความก่อน'); input.focus(); return; }
             try {
                 if (await saveResponse(keyword, text)) {
-                    input.value = '';
-                    input.focus();
-                    showToast('เพิ่มคำแล้ว!');
+                    showToast('เพิ่มคำใหม่แล้ว!');
+                    // เด้งไปที่ปุ่มนั้น แสดงรายการสุ่ม + คำใหม่อยู่บนสุด (ไฮไลต์)
+                    sendKeyword(keyword, text.replace(/\n/g, '<br>'));
                 }
+            } catch (err) { showToast(err.message); }
+            return;
+        }
+        // ปักหมุด/เลิกปักหมุด (ติดดาว)
+        const star = e.target.closest('.star-btn');
+        if (star) {
+            const item = star.closest('.response-item');
+            const textEl = item.querySelector('.response-text');
+            if (!textEl || !currentKeyword) return;
+            try {
+                const pinned = await togglePin(currentKeyword, textEl.innerHTML);
+                item.classList.toggle('pinned', pinned);
+                star.textContent = pinned ? '★' : '☆';
+                showToast(pinned ? 'ปักหมุดแล้ว' : 'เอาหมุดออกแล้ว');
             } catch (err) { showToast(err.message); }
             return;
         }
